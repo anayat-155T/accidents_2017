@@ -1,0 +1,473 @@
+---
+title: "R Notebook"
+output: html_notebook
+editor_options: 
+  markdown: 
+    wrap: sentence
+---
+
+This is an [R Markdown](http://rmarkdown.rstudio.com) Notebook.
+When you execute code within the notebook, the results appear beneath the code.
+
+*Cmd+Shift+Enter*.
+
+# Accidents in the year 2017
+
+# Ask:
+
+Define the problem or question you want to answer with the data.
+Gather information about the context and existing knowledge related to the problem.
+Formulate specific, measurable, achievable, relevant, and time-bound (SMART) questions for analysis.
+
+Objective:
+
+Traffic accidents remain a persistent threat on American roads.
+In 2020, an estimated 38824 people lost their lives in motor vehicle crashes, and millions more were injured.
+This analysis seeks to understand the underlying causes of these incidents to develop effective preventative measures.
+By examining traffic accident data, we aim to identify contributing factors and patterns, ultimately reducing the devastating impact of these tragedies.
+
+#### Which states have the 10 most fatalities?
+
+#### Top 10 states for the year 2017?
+
+#### Top 10 states for the year 2017 per population?
+
+#### Which times of days (which hour) are their more occurances?
+
+```{r}
+#install packages
+install.packages('ggplot2')
+install.packages('tidyr')
+install.packages('purrr')
+install.packages('dplyr')
+install.packages('tidyverse')
+install.packages('shiny')
+install.packages('psych')
+# getting packages to show on a map
+install.packages('maps')
+install.packages('readr')
+```
+
+Loading in required packages
+
+```{r}
+library(tidyverse)
+library(tidyr)
+library(purrr)
+library(dplyr)
+library(ggplot2)
+library(psych)
+library(readr)
+```
+
+```{r}
+# get packages for google drive
+# install.packages('googledrive')
+# library(googledrive)
+# 
+# drive_auth()
+# # Specify the file ID of your CSV file
+# file_id <- "https://drive.google.com/file/d/1QzStpCeP3erTbg0h5rt_iQbUx_dgy57F/view?usp=drive_link"
+# 
+# #download the file
+# download_file(file_id, pa)
+# # Load the data
+accidents <- read.csv('accidents.csv')
+
+# Identify the latest year
+latest_year <- max(accidents$YEAR)
+
+# Print the latest year
+print(latest_year)
+print(summary(accidents))
+```
+
+Lets use the psych package to get a more comprehensive descriptive statistics with the describe funtion:
+
+```{r}
+describe(accidents)
+```
+
+```{r}
+colSums(is.na(accidents))
+
+```
+
+Check for any outliers.
+
+```{r}
+# Create list for boxplots
+# na.rm = TRUE: ensure that the summary statistics are not affected by the missing values
+summary(accidents, na.rm = TRUE)
+```
+
+# Prepare:
+
+Collect or access the relevant data sources.
+Clean and pre-process the data to handle missing values, inconsistencies, and errors.
+Explore the data through descriptive statistics and visualizations to understand its distribution and characteristics.
+
+```{r}
+# Select only numeric columns from the accidents DataFrame
+
+outlierremoval <- function(accidents){
+ accidents %>%
+      # Select only numeric columns from the accidents DataFrame
+      select_if(is.numeric) %>% 
+      map(~ .x[!.x %in% boxplot.stats(.)$out]) 
+ }
+
+options(max.print = 200)
+print(outlierremoval(accidents))
+# options(max.print = 1000)
+```
+
+```{r}
+list_plots <- lapply(names(accidents), function(col) {
+  # Increase plot area size
+  ggplot(accidents, aes(x = .data[[col]], y = ..count..)) +
+    geom_bar(aes(fill = .data[[col]]), position = "dodge") +
+    # Center x-axis labels and adjust spacing
+    theme(
+      axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5),
+      axis.ticks.x = element_line(linewidth = 0.5)  # Fix size issue
+    ) +
+    guides(
+      legend = TRUE,
+      legend.title = element_text(angle = 90),
+      legend.text = element_text(angle = 90)
+    ) +
+    facet_grid(~ .)
+})
+
+```
+
+```{r}
+# fix misspelling / spelling errors
+print('FUNC_SYS')
+print(unique(accidents$FUNC_SYS))
+```
+
+```{r}
+# fix spelling error
+accidents$FUNC_SYS[accidents$FUNC_SYS == 'ncipal arterial, other'] <- 'Principal arterial, other'
+# double check
+print(unique(accidents$FUNC_SYS))
+```
+
+```{r}
+accidents <- accidents %>%
+ filter(HOUR <= 24,
+        MINUTE <= 59,
+        DAY <= 31,
+        YEAR >= 1990)
+```
+
+##### Now to double check for any visible outliers on the graphs:
+
+```{r}
+lapply(names(accidents), function(col=group) {
+  ggplot(accidents, aes(x = .data[[col]], y = ..count..)) + 
+    geom_bar(aes(fill = .data[[col]]), position = "dodge") +
+    # Display the legend with title and text slanted at 45 degrees
+    guides(
+      legend = TRUE,
+      legend.title = element_text(angle = 45, size = 12),
+      legend.text = element_text(angle = 45, size = 10)
+    ) + 
+      # Rotate the x-axis labels to 90 degrees and adjust horizontal alignment
+      theme(axis.text.x = element_text(angle=90, hjust=3))
+}) -> list_plots
+```
+
+```{r}
+print(list_plots)
+```
+
+### Which states have the 10 most fatalities?
+
+```{r}
+# Check for missing values
+print(which(is.na(accidents$STATE)))
+print(which(is.na(accidents$FATALS)))
+
+# Calculate total fatalities per state
+fatals_per_state <- aggregate(FATALS ~ STATE, data = accidents, sum)
+
+# Sort by fatalities and select the top 10 states
+fatals_per_state <- arrange(fatals_per_state, desc(FATALS))[1:10,]
+
+# print results
+print(fatals_per_state)
+```
+
+Moving on from the national perspective, let's zoom in and examine the states with the highest number of accident fatalities in 2017.
+
+### Top 10 states with most accident fatals for the year 2017?
+
+```{r}
+# Check for missing values
+print(which(is.na(accidents$STATE)))
+print(which(is.na(accidents$FATALS)))
+
+# Filter data for the year 2017
+accidents_2017 <- accidents[accidents$YEAR == 2017,]
+
+# Calculate total fatalities per state for 2017
+fatals_per_state_2017 <- aggregate(FATALS ~ STATE, data = accidents_2017, sum)
+
+# Sort by fatalities and select the top 10 states
+top_10_fatals_2017 <- arrange(fatals_per_state_2017, desc(FATALS))[1:10,]
+
+# print results
+print(top_10_fatals_2017)
+```
+
+To understand the impact of fatal accidents more comprehensively, we must consider population density.
+The following will rank the top 10 states with the highest fatal accident rates per capita in 2017.
+
+### Top 10 states for the year 2017 per population?
+
+```{r}
+state_pop = read.csv('/Users/charles/Documents/50_states_pop.csv')
+
+# Change the column titles to uppercase
+colnames(state_pop) <- toupper(colnames(state_pop))
+
+print(head(state_pop))
+
+top_10_fatals_2017_per_state <- top_10_fatals_2017 %>%
+  merge(state_pop, by = "STATE")
+
+print(top_10_fatals_2017_per_state)
+```
+
+Calculating traffic accident fatalities per capita allows for fair comparisons between states with varying population sizes, providing a clearer picture of their relative risk on the road.
+To facilitate this analysis, we will express fatalities per million population for each state.
+
+```{r}
+# Create a new column named "fatality_rate" by dividing FATALS by POPULATION
+top_10_fatals_2017_per_state$fatality_rate_per_million <- top_10_fatals_2017_per_state$FATALS / top_10_fatals_2017_per_state$POPULATION * 1000000
+top_10_fatals_2017_per_state <- arrange(top_10_fatals_2017_per_state, desc(fatality_rate_per_million))
+print(top_10_fatals_2017_per_state)
+```
+
+```{r}
+library(ggplot2)
+library(maps)
+library(dplyr)
+
+
+# Load US state data
+all_states <- map_data("state")
+
+# Assuming you have "top_10_fatals_2017_per_state" data with state and fatality rate
+
+# Join data with map data (modify based on your data structure)
+merged_data <- inner_join(
+  transform(all_states, region = tolower(region)),
+  transform(top_10_fatals_2017_per_state, STATE = tolower(STATE)),
+  by = c("region" = "STATE")
+)
+
+# Fill missing fatality rates (if needed)
+merged_data$fatality_rate_per_million[is.na(merged_data$fatality_rate_per_million)] <- 0
+
+# Create the map
+ggplot(merged_data, aes(x = long, y = lat, group = group, fill = fatality_rate_per_million)) +
+  # State boundaries (thinner line)
+  geom_polygon(color = "gray80", size = 0.2) +
+  # US outline (thicker black line)
+  geom_polygon(data = all_states, aes(x = long, y = lat, group = group), color = "black", fill = NA, size = 0.5) +
+  # Color gradient for fatality rate
+  scale_fill_gradient(low = "lightblue", high = "red", name = "Fatality Rate\nper Million") +
+  # Map title
+  ggtitle("Fatality Rates per Million by State (2017)") +
+  # Remove extra plot elements
+  theme_void() +
+  # Use map projection for accurate positioning
+  coord_map()
+
+```
+
+```{r}
+
+# Order the data frame by fatality rate per million
+top_10_fatals_2017_per_state <- arrange(top_10_fatals_2017_per_state)
+print(top_10_fatals_2017_per_state)
+# Create the bar chart to show the fatality rate per million by State
+ggplot(data = top_10_fatals_2017_per_state,
+       aes(x = fatality_rate_per_million,
+           y = reorder(STATE, fatality_rate_per_million),
+           fill = -fatality_rate_per_million)) +
+  geom_bar(stat = "identity", width = .9) +
+  geom_text(aes(label = round(fatality_rate_per_million, 1)), # Round to 1 decimal point
+            stat = "identity",
+            vjust = 0.5, # Adjust label position above bars
+            hjust = 1.5,
+            color = "#E36414",
+            fontweight = "bold") + # Set text color and weight
+  labs(title = "Fatality Rate Per Million by State in 2017",
+       y = "State",
+       x = "Fatality Rate per Million") +
+  theme_bw() +
+  scale_color_gradientn(colors = rainbow(2))
+```
+
+The bar chart paints a vivid picture of fatality rates per million across various states, revealing a stark disparity in the toll of preventable accidents.
+While some states boast remarkably low rates, others struggle with alarmingly high figures.
+This discrepancy underscores the urgent need for targeted interventions and safety initiatives tailored to individual states' specific challenges.
+
+On the one hand, several states showcase exemplary fatality rates, demonstrating the effectiveness of their safety measures.
+These states can serve as beacons of success, inspiring others to emulate their strategies and prioritize public safety.
+
+However, the somber reality for states with significantly higher fatalities demands immediate attention.
+The graph acts as a powerful call to action, urging policymakers and stakeholders to implement comprehensive plans to address the root causes of these tragic occurrences.
+
+### Which times of days (which hour) are their more occurances?
+
+```{r}
+# Count occurrences of accidents for each hour
+# Sort data by count in descending order
+hour_counts_sorted <- accidents_2017 %>%
+  group_by(HOUR) %>%
+  summarise(count = n()) %>%
+  arrange(desc(count))
+print(hour_counts_sorted)
+```
+
+```{r}
+# Calculate medians for count within each hour range
+median_count_0_11 <- median(hour_counts_sorted[hour_counts_sorted$HOUR <= 11,]$count)
+median_count_12_23 <- median(hour_counts_sorted[hour_counts_sorted$HOUR >= 12,]$count)
+
+# Print the results
+cat("Median count for hours 0-11:", median_count_0_11, "\n")
+cat("Median count for hours 12-23:", median_count_12_23)
+```
+
+So, Accidents median is higher in the afternoon and night i.e. 12-23:59vs from midnight to noon.
+
+```{r}
+# Create the horizontal bar chart:
+
+ggplot(hour_counts_sorted, aes(x = HOUR, y = count), fill(hour_counts_sorted)) +
+  geom_bar(stat = "identity", fill = "#96EFFF", alpha = 0.5, width = 0.8) +
+  labs(title = "Number of Accidents by Hour in 2017",
+       x = "Hour of the Day (0-23)",
+       y = "Number of Accidents") +
+  # Add annotations for each median
+  geom_label(aes(label = paste0("Median: ", median_count_0_11)), x = 5.5, y = 80, hjust = "left", color = "#FFB534", size = 6) +
+  geom_label(aes(label = paste0("Median: ", median_count_12_23)), x = 18.5, y = 80, hjust = "left", color = "#5C8374", size = 6) +
+  geom_text(aes(label = count),
+            stat = "identity",
+            vjust = .4,
+            hjust = 3.5,
+            color = "#1B4242",
+            fontweight = "bold") +
+  theme_bw() +
+  coord_flip() +
+  # for vline used vs hline
+  geom_vline(xintercept = 12.0, linetype = "dashed", color = "#A9A9A9", size = 0.5)
+```
+
+Data indicates a substantial increase in median accidents counts during the nighttime hours and looks like a major difference in road safety.
+Comparing nighttime median accidents to overall median or the morning's median further emphasizes the magnitude of this risk.
+
+Several factors may contribute to the nighttime peak.
+These include reduced visibility, driver fatigue, increased instances of drunk driving, and potentially altered risk perception.
+
+```{r}
+hour_counts_sorted$half_of_day <- cut(hour_counts_sorted$HOUR, breaks = c(0, 12, 24), labels = c("AM", "PM"), include.lowest = TRUE)
+
+ggplot(hour_counts_sorted, aes(x = HOUR, y = count), fill(hour_counts_sorted)) +
+  geom_bar(stat = "identity", aes(fill = half_of_day), width = 0.8) +
+  scale_fill_manual(values = c("AM" = "#96EFFF", "PM" = "#FFB534")) +
+  labs(title = "Number of Accidents by Hour in 2017",
+       x = "Hour of the Day (0-23)",
+       y = "Number of Accidents") +
+  # Add annotations for each median
+  geom_label(aes(label = paste0("Median: ", median_count_0_11)), x = 5.5, y = 10, hjust = "left", color = "#FFB534", size = 6) +
+  geom_label(aes(label = paste0("Median: ", median_count_12_23)), x = 18.5, y = 680, hjust = "left", color = "#5C8374", size = 6) +
+  geom_text(aes(label = count),
+            stat = "identity",
+            vjust = .4,
+            hjust = 3.5,
+            color = "#1B4242",
+            fontweight = "bold") +
+  theme_bw() +
+  coord_flip() +
+  # for vline used vs hline
+  geom_vline(xintercept = 12.0, linetype = "dashed", color = "#A9A9A9", size = 0.5)
+```
+
+```{r}
+print(merged_data)
+print(colnames(accidents_2017))
+```
+
+```{r}
+# Check if WEATHER1 has any NA values
+has_na <- sum(!is.na(accidents_2017$WEATHER1)) > 0
+
+# Count rows based on WEATHER1 excluding NA values
+if (has_na) {
+  weather1_counts <- accidents_2017[!is.na(accidents_2017$WEATHER1),]$WEATHER1 %>%
+    table()
+} else {
+  weather1_counts <- accidents_2017$WEATHER1 %>%
+    table()
+}
+
+# Print the results
+print("Number of accidents by WEATHER1 (excluding NA):")
+print(weather1_counts)
+```
+
+The raw numbers tell a surface story, but the proportions can unearth the hidden dimensions of risk, tracing the invisible threads that bind certain weather types to a disproportionate share of accidents.
+
+```{r}
+# Calculate total number of accidents (excluding NA)
+total_accidents <- sum(weather1_counts)
+
+# Calculate proportions for each WEATHER1 value
+proportions <- weather1_counts / total_accidents
+
+# Print the proportions
+# print("Proportions of accidents by WEATHER1 (excluding NA):")
+# print(proportions)
+
+# Sort proportions in descending order
+proportions_sorted <- sort(proportions, decreasing = TRUE)
+
+# Print sorted proportions
+print("Proportions of accidents by WEATHER1 (excluding NA) in descending order:")
+print(proportions_sorted)
+```
+
+```{r}
+# bar chart
+ggplot(data = data.frame(WEATHER1 = names(proportions_sorted), proportion = proportions_sorted),
+       aes(x = reorder(WEATHER1, proportions), y = proportions)) +
+  geom_bar(stat = 'identity', fill = 'skyblue') +
+  geom_text(aes(label = round(proportions, 2)), vjust = 0.4, hjust = 1.1) +
+  labs(title = 'Proportions of Accidents by WEATHER1 (excluding NA)', x = 'WEATHER1', y = "Proportion") +
+  theme_minimal() +
+  coord_flip()
+```
+
+When looking at different conditions we can see that Rain is the most common accidents occurring condition.
+This analysis of traffic accidents in 2017 has shed light on some key aspects of road safety concerns in the United States. 
+Here's a summary of key points:
+* **High-Fatality States**: Highest total number of fatalities per capita were identified. This information can help prioritize resources for states facing the most significant challenges.
+* **Fatality Rates**: By calculating fatality rates per million population, a relative risk across multiple states was calculated. 
+* **Time of Day**: The analysis showed a significant increase in the median for accidents during nighttime hours compared to daytime. Reduced visibility , driver fatigue, and potentially altered risk perception could be contributing factors.
+* **Weather Conditions**: While raw data provided insights into the frequency of accidents under different weather conditions, further analysis exploring proportions under different weather condition at the same locations can better reveal which weather types pose the greater risk for accidents.
+
+Overall, this study clarifies data-driven approaches to tackling traffic safety issues. By identifying high-risk factors and vulnerable populations, we can develop more effective strategies to prevent accidents, save lives, and prevent traffic jams.
+
+**Further Considerations:**
+* This analysis focused on data from 2017. Examing data from additional years could reveal trends and track progress in road safety efforts.
+* We could explore other factors like road type, driver demographics, and accident severity to gain a more comprehensive risk analysis.
+* Also, one could investigate the specific causes of accidents (e.g., speeding, distracted driving) and infroms development of targeted safety campaigns.
+By continuing to analyze traffic accident data and implementing data-driven solutions, we can create safer roads for everyone.
